@@ -1,0 +1,1688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouControl Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- TENSORFLOW & TEACHABLE MACHINE LIBS -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <style>
+        /* CSS Reset & Variables */
+        :root {
+            --bg-main: #060907;
+            --bg-panel: #0d1410;
+            --bg-card: #111a15;
+            --bg-card-hover: #15241c;
+            --text-main: #8af0c6;
+            --text-muted: #4e7a63;
+            --border: #1a2c22;
+            --border-hover: #2a4a38;
+            --accent: #22d385;
+            --accent-glow: rgba(34, 211, 133, 0.25);
+            --accent-soft: rgba(34, 211, 133, 0.08);
+            --danger: #d33c22;
+            --danger-glow: rgba(211, 60, 34, 0.3);
+            --font-mono: 'Courier New', Courier, monospace;
+            --radius: 8px;
+            --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            font-family: var(--font-mono);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* ========== LOADING SCREEN ========== */
+        #loader {
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(ellipse at center, #0a1210 0%, var(--bg-main) 70%);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.6s ease, visibility 0.6s ease;
+        }
+        #loader.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .loader-brand {
+            font-size: 0.85rem;
+            letter-spacing: 8px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            opacity: 0;
+            animation: fadeUp 0.6s ease 0.2s forwards;
+        }
+
+        .loader-text {
+            font-size: 2.4rem;
+            letter-spacing: 6px;
+            font-weight: bold;
+            color: var(--accent);
+            text-shadow: 0 0 20px var(--accent-glow), 0 0 40px var(--accent-glow);
+            margin-bottom: 8px;
+            opacity: 0;
+            animation: fadeUp 0.6s ease 0.4s forwards, pulseGlow 2s ease-in-out 1s infinite;
+        }
+
+        .loader-sub {
+            font-size: 0.75rem;
+            letter-spacing: 3px;
+            color: var(--text-muted);
+            margin-bottom: 40px;
+            opacity: 0;
+            animation: fadeUp 0.6s ease 0.6s forwards;
+        }
+
+        .progress-wrapper {
+            width: 280px;
+            opacity: 0;
+            animation: fadeUp 0.6s ease 0.8s forwards;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 3px;
+            background: var(--border);
+            border-radius: 2px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), #4aefa0);
+            width: 0%;
+            border-radius: 2px;
+            box-shadow: 0 0 12px var(--accent), 0 0 24px var(--accent-glow);
+            animation: fillBar 2.8s cubic-bezier(0.4, 0, 0.2, 1) 1s forwards;
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+        }
+
+        .loader-scanline {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: 0.4;
+            animation: scanline 2.5s linear infinite;
+        }
+
+        @keyframes fillBar {
+            0% { width: 0%; }
+            20% { width: 25%; }
+            50% { width: 60%; }
+            80% { width: 85%; }
+            100% { width: 100%; }
+        }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulseGlow {
+            0%, 100% { text-shadow: 0 0 20px var(--accent-glow), 0 0 40px var(--accent-glow); }
+            50% { text-shadow: 0 0 30px var(--accent), 0 0 60px var(--accent-glow); }
+        }
+        @keyframes scanline {
+            0% { top: 0; opacity: 0; }
+            10% { opacity: 0.4; }
+            90% { opacity: 0.4; }
+            100% { top: 100%; opacity: 0; }
+        }
+
+        /* ========== LAYOUT ========== */
+        .sidebar-left {
+            width: 80px;
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px 0;
+            background-color: var(--bg-panel);
+            transition: border-color var(--transition);
+        }
+        .brand-text {
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            letter-spacing: 5px;
+            font-weight: bold;
+            font-size: 1.15rem;
+            color: var(--accent);
+            text-shadow: 0 0 14px var(--accent-glow);
+            transition: text-shadow var(--transition);
+        }
+        .brand-text:hover {
+            text-shadow: 0 0 22px var(--accent);
+        }
+        .author-text {
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: color var(--transition), letter-spacing var(--transition);
+            letter-spacing: 1px;
+        }
+        .author-text:hover {
+            color: var(--text-main);
+            letter-spacing: 2px;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 24px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+        .main-content::-webkit-scrollbar { width: 6px; }
+        .main-content::-webkit-scrollbar-track { background: transparent; }
+        .main-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        .main-content::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+        .sidebar-right {
+            width: 300px;
+            border-left: 1px solid var(--border);
+            background-color: var(--bg-panel);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ========== HEADER ========== */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+            animation: fadeUp 0.5s ease;
+        }
+        header h1 {
+            font-size: 1.15rem;
+            font-weight: normal;
+            letter-spacing: 2px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .live-clock {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            background: var(--bg-card);
+            padding: 5px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            letter-spacing: 1px;
+            transition: border-color var(--transition);
+        }
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--danger);
+            transition: color var(--transition);
+        }
+        .status-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--danger);
+            transition: background var(--transition), box-shadow var(--transition);
+            animation: blinkDot 1.5s ease-in-out infinite;
+        }
+        .status-indicator.connected {
+            color: var(--accent);
+        }
+        .status-indicator.connected .status-dot {
+            background: var(--accent);
+            box-shadow: 0 0 10px var(--accent);
+            animation: pulseDot 2s ease-in-out infinite;
+        }
+        @keyframes blinkDot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        @keyframes pulseDot {
+            0%, 100% { box-shadow: 0 0 6px var(--accent); }
+            50% { box-shadow: 0 0 14px var(--accent), 0 0 20px var(--accent-glow); }
+        }
+
+        button {
+            background: transparent;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 9px 16px;
+            font-family: inherit;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all var(--transition);
+            letter-spacing: 1px;
+            border-radius: 6px;
+            position: relative;
+            overflow: hidden;
+        }
+        button:hover {
+            background: var(--accent-soft);
+            border-color: var(--accent);
+            box-shadow: 0 0 12px var(--accent-glow);
+            transform: translateY(-1px);
+        }
+        button:active {
+            transform: translateY(0) scale(0.97);
+        }
+
+        /* ========== TABS ========== */
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            animation: fadeUp 0.5s ease 0.1s both;
+        }
+        .tab {
+            padding: 7px 18px;
+            cursor: pointer;
+            color: var(--text-muted);
+            border: 1px solid transparent;
+            border-radius: 20px;
+            transition: all var(--transition);
+            letter-spacing: 1px;
+            font-size: 0.85rem;
+        }
+        .tab:hover {
+            color: var(--text-main);
+            background: var(--accent-soft);
+        }
+        .tab.active {
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+        }
+
+        /* ========== CONTENT AREAS ========== */
+        .view-container {
+            display: none;
+            animation: viewFade 0.35s ease;
+        }
+        .view-container.active {
+            display: block;
+        }
+        @keyframes viewFade {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        /* ========== WIDGET CARDS ========== */
+        .widget-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-top: 2px solid var(--accent);
+            border-radius: var(--radius);
+            padding: 22px;
+            position: relative;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            transition: all var(--transition);
+            animation: cardIn 0.4s ease both;
+        }
+        .widget-card:hover {
+            border-color: var(--border-hover);
+            background: var(--bg-card-hover);
+            box-shadow: 0 6px 28px rgba(0,0,0,0.5), 0 0 20px var(--accent-soft);
+            transform: translateY(-2px);
+        }
+        .widget-card h3 {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 14px;
+            letter-spacing: 1.5px;
+        }
+        .widget-card .value {
+            font-size: 2.4rem;
+            color: var(--text-main);
+            font-weight: bold;
+            transition: color var(--transition);
+        }
+        .btn-delete {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            border: none;
+            padding: 4px 8px;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            border-radius: 4px;
+            transition: all var(--transition-fast);
+        }
+        .btn-delete:hover {
+            color: var(--danger);
+            background: rgba(211, 60, 34, 0.1);
+            border-color: transparent;
+            box-shadow: none;
+            transform: none;
+        }
+
+        @keyframes cardIn {
+            from { opacity: 0; transform: translateY(12px) scale(0.97); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        /* ========== BT CONTROLLER ========== */
+        .d-pad-wrapper {
+            position: relative;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-top: 2px solid var(--accent);
+            border-radius: var(--radius);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 24px;
+            max-width: 500px;
+            margin: 0 auto;
+            animation: cardIn 0.4s ease;
+            transition: box-shadow var(--transition);
+        }
+        .d-pad-wrapper:hover {
+            box-shadow: 0 6px 28px rgba(0,0,0,0.5), 0 0 24px var(--accent-soft);
+        }
+
+        .mode-switcher {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 28px;
+            background: var(--bg-main);
+            padding: 5px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+        .mode-btn {
+            border: none;
+            padding: 8px 18px;
+            border-radius: 7px;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-weight: bold;
+            transition: all var(--transition);
+            background: transparent;
+        }
+        .mode-btn:hover {
+            color: var(--text-main);
+            background: var(--accent-soft);
+            box-shadow: none;
+            transform: none;
+        }
+        .mode-btn.active {
+            background: var(--accent);
+            color: var(--bg-main);
+            box-shadow: 0 0 14px var(--accent-glow);
+        }
+
+        .d-pad-container {
+            display: grid;
+            grid-template-areas: ". up ." "left center right" ". down .";
+            gap: 14px;
+            justify-content: center;
+            align-items: center;
+            background: var(--bg-panel);
+            padding: 28px;
+            border-radius: 50%;
+            border: 2px dashed var(--border);
+            box-shadow: inset 0 0 24px rgba(0,0,0,0.5);
+            transition: border-color var(--transition);
+        }
+        .d-pad-btn {
+            width: 70px;
+            height: 70px;
+            background: var(--bg-card);
+            border: 2px solid var(--accent);
+            color: var(--text-main);
+            border-radius: 14px;
+            font-size: 1.8rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+            touch-action: none;
+            box-shadow: 0 4px 12px var(--accent-glow);
+        }
+        .d-pad-btn:hover {
+            background: var(--accent-soft);
+            box-shadow: 0 0 18px var(--accent-glow);
+            transform: scale(1.05);
+        }
+        .d-pad-btn.pressed {
+            background: var(--accent);
+            color: var(--bg-main);
+            transform: scale(0.88);
+            box-shadow: 0 0 24px var(--accent), inset 0 2px 6px rgba(0,0,0,0.3);
+        }
+        .d-pad-btn.center {
+            border-radius: 50%;
+            grid-area: center;
+            font-size: 1.2rem;
+        }
+        .d-pad-btn.up { grid-area: up; }
+        .d-pad-btn.down { grid-area: down; }
+        .d-pad-btn.left { grid-area: left; }
+        .d-pad-btn.right { grid-area: right; }
+
+        .empty-state {
+            text-align: center;
+            color: var(--text-muted);
+            margin-top: 60px;
+            font-style: italic;
+            animation: fadeUp 0.5s ease;
+            line-height: 1.6;
+        }
+
+        /* ========== TEACHABLE MACHINE STYLES ========== */
+        .tm-wrapper {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-top: 2px solid var(--accent);
+            border-radius: var(--radius);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            padding: 26px;
+            max-width: 860px;
+            margin: 0 auto;
+            position: relative;
+            animation: cardIn 0.4s ease;
+            transition: box-shadow var(--transition);
+        }
+        .tm-wrapper:hover {
+            box-shadow: 0 6px 28px rgba(0,0,0,0.5), 0 0 24px var(--accent-soft);
+        }
+        .tm-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .tm-title {
+            font-size: 1.05rem;
+            letter-spacing: 2px;
+            color: var(--accent);
+            font-weight: bold;
+        }
+        .tm-main-grid {
+            display: grid;
+            grid-template-columns: 330px 1fr;
+            gap: 24px;
+        }
+        @media (max-width: 800px) {
+            .tm-main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .tm-cam-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+        }
+        .tm-webcam-container {
+            width: 290px;
+            height: 220px;
+            background: #000;
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border);
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+            position: relative;
+        }
+        .tm-webcam-container canvas {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover;
+            border-radius: 6px;
+        }
+        .tm-status-pill {
+            margin-top: 14px;
+            font-size: 0.75rem;
+            padding: 5px 14px;
+            border-radius: 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            transition: all var(--transition);
+            text-align: center;
+            width: 100%;
+        }
+        .tm-status-pill.active {
+            color: var(--accent);
+            border-color: var(--accent);
+            box-shadow: 0 0 12px var(--accent-glow);
+        }
+        .tm-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .tm-url-input-group {
+            display: flex;
+            gap: 8px;
+        }
+        .tm-url-input-group input {
+            flex: 1;
+            padding: 10px 14px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 0.8rem;
+            border-radius: 6px;
+        }
+        .tm-url-input-group input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .tm-btn-primary {
+            background: var(--accent);
+            color: var(--bg-main);
+            font-weight: bold;
+            border-color: var(--accent);
+        }
+        .tm-btn-primary:hover {
+            background: #4aefa0;
+            color: var(--bg-main);
+            box-shadow: 0 0 16px var(--accent-glow);
+        }
+        .tm-btn-danger {
+            border-color: var(--danger);
+            color: var(--danger);
+        }
+        .tm-btn-danger:hover {
+            background: rgba(211, 60, 34, 0.15);
+            border-color: var(--danger);
+            box-shadow: 0 0 12px var(--danger-glow);
+        }
+        .tm-classes-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 260px;
+            overflow-y: auto;
+            padding-right: 4px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+        .tm-class-item {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: border-color var(--transition), background var(--transition);
+        }
+        .tm-class-item.active-class {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+            box-shadow: 0 0 10px var(--accent-glow);
+        }
+        .tm-class-info {
+            flex: 1;
+        }
+        .tm-class-name {
+            font-size: 0.8rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .tm-class-bar {
+            width: 100%;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .tm-class-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: width 0.08s linear;
+        }
+        .tm-cmd-input {
+            width: 110px;
+            padding: 7px 10px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 0.75rem;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .tm-cmd-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        /* ========== I/O MONITOR ========== */
+        .monitor-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .monitor-header h2 {
+            font-size: 0.95rem;
+            letter-spacing: 2px;
+            font-weight: normal;
+        }
+        .log-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 0.8rem;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+        .log-container::-webkit-scrollbar { width: 4px; }
+        .log-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+        .log-entry {
+            padding: 8px 10px;
+            border-radius: 6px;
+            border-bottom: none;
+            background: transparent;
+            transition: background var(--transition-fast);
+            animation: logIn 0.3s ease;
+        }
+        .log-entry:hover {
+            background: var(--accent-soft);
+        }
+        .log-entry .time {
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            font-family: monospace;
+            margin-bottom: 2px;
+        }
+        .log-entry .type { font-weight: bold; }
+        .log-entry.in .type { color: #4a90e2; }
+        .log-entry.out .type { color: var(--accent); }
+        .log-entry.sys .type { color: #e5c07b; }
+        .log-entry.err .type { color: var(--danger); }
+
+        @keyframes logIn {
+            from { opacity: 0; transform: translateX(8px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        /* ========== FORM BUILDER ========== */
+        .form-group {
+            margin-bottom: 20px;
+            animation: fadeUp 0.4s ease both;
+        }
+        .form-group:nth-child(1) { animation-delay: 0.05s; }
+        .form-group:nth-child(2) { animation-delay: 0.1s; }
+        .form-group:nth-child(3) { animation-delay: 0.15s; }
+        .form-group:nth-child(4) { animation-delay: 0.2s; }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+        }
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 11px 14px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            font-family: inherit;
+            border-radius: 6px;
+            transition: border-color var(--transition), box-shadow var(--transition);
+        }
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-soft);
+        }
+        .form-group input::placeholder {
+            color: var(--text-muted);
+            opacity: 0.6;
+        }
+
+        .dpad-settings {
+            background: var(--accent-soft);
+            padding: 18px;
+            border: 1px dashed var(--accent);
+            border-radius: var(--radius);
+            margin-top: 16px;
+            display: none;
+            animation: fadeUp 0.3s ease;
+        }
+        .dpad-settings p.title {
+            color: var(--accent);
+            font-size: 0.8rem;
+            margin-bottom: 12px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        .dpad-settings .row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .dpad-settings input {
+            flex: 1;
+            padding: 9px 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            font-family: inherit;
+            border-radius: 6px;
+            transition: border-color var(--transition);
+        }
+        .dpad-settings input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        /* ========== SLIDERS & SWITCH ========== */
+        input[type=range] {
+            width: 100%;
+            margin-top: 14px;
+            accent-color: var(--accent);
+            background: var(--border);
+            height: 3px;
+            -webkit-appearance: none;
+            border-radius: 2px;
+            cursor: pointer;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 8px var(--accent-glow);
+            transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 0 14px var(--accent);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 52px;
+            height: 26px;
+            margin-top: 10px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: var(--border);
+            transition: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 26px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 4px;
+            bottom: 4px;
+            background-color: var(--text-muted);
+            transition: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: var(--accent-glow);
+            border: 1px solid var(--accent);
+            box-shadow: 0 0 10px var(--accent-soft);
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+            background-color: var(--accent);
+            box-shadow: 0 0 8px var(--accent);
+        }
+
+        /* ========== MODAL ========== */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(8px);
+            animation: modalBg 0.3s ease;
+        }
+        .modal.show {
+            display: flex;
+        }
+        .modal-content {
+            background: var(--bg-panel);
+            border: 1px solid var(--accent);
+            padding: 32px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+            border-radius: var(--radius);
+            box-shadow: 0 0 40px var(--accent-glow), 0 20px 60px rgba(0,0,0,0.5);
+            animation: modalIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .modal-content h2 {
+            color: var(--accent);
+            margin-bottom: 22px;
+            letter-spacing: 2px;
+        }
+        @keyframes modalBg {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.92) translateY(12px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <!-- LOADING SCREEN -->
+    <div id="loader">
+        <div class="loader-scanline"></div>
+        <div class="loader-brand">SYSTEM</div>
+        <div class="loader-text">YouControl</div>
+        <div class="loader-sub">MICRO:CONSOLE INITIALIZING</div>
+        <div class="progress-wrapper">
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+            <div class="progress-label">
+                <span>LOADING MODULES</span>
+                <span id="progressPct">0%</span>
+            </div>
+        </div>
+    </div>
+
+    <nav class="sidebar-left">
+        <div class="brand-text">YouControl</div>
+        <div class="author-text" onclick="showContact()">Made By Athaya</div>
+    </nav>
+
+    <main class="main-content">
+        <header>
+            <h1>
+                MICRO:CONSOLE / <span id="pageTitle" style="color:var(--text-main)">DASHBOARD</span>
+                <span id="liveClock" class="live-clock">00:00:00</span>
+            </h1>
+            <div class="controls">
+                <div id="statusIndicator" class="status-indicator">
+                    <div class="status-dot"></div>
+                    <span id="statusText">DISCONNECTED</span>
+                </div>
+                <button id="connectBtn">CONNECT DEVICE</button>
+            </div>
+        </header>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('dashboard')">OVERVIEW</div>
+            <div class="tab" onclick="switchTab('controller')">BT CONTROLLER</div>
+            <div class="tab" onclick="switchTab('teachable')">TEACHABLE MACHINE</div>
+            <div class="tab" onclick="switchTab('builder')">BUILDER</div>
+        </div>
+
+        <div id="dashboard" class="view-container active">
+            <div id="widgetContainer" class="grid"></div>
+        </div>
+
+        <div id="controller" class="view-container">
+            <div id="controllerContainer">
+                <div class="empty-state">Tambahkan widget "Custom Button (D-Pad)" di Builder untuk menggunakan kontroler ini.</div>
+            </div>
+        </div>
+
+        <div id="teachable" class="view-container">
+            <div id="teachableContainer">
+                <div class="empty-state">Tambahkan widget "Teachable Machine AI" di Builder untuk menggunakan kontroler ini.</div>
+            </div>
+        </div>
+
+        <div id="builder" class="view-container">
+            <div style="max-width: 500px;">
+                <div class="form-group" id="keyGroup">
+                    <label>DATA KEY</label>
+                    <input type="text" id="wKey" placeholder="Match micro:bit serial print">
+                </div>
+                <div class="form-group">
+                    <label>WIDGET LABEL</label>
+                    <input type="text" id="wLabel" placeholder="e.g., TinyBit Controller">
+                </div>
+                <div class="form-group">
+                    <label>CATEGORY</label>
+                    <select id="wCategory" onchange="updateTypeOptions()">
+                        <option value="input">INPUT (Read from Device)</option>
+                        <option value="output">OUTPUT (Send to Device)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>WIDGET TYPE</label>
+                    <select id="wType" onchange="toggleWidgetSettings()"></select>
+                </div>
+
+                <div class="dpad-settings" id="dpadSettings">
+                    <p class="title">KONFIGURASI PERINTAH (STRINGS)</p>
+                    <div class="row">
+                        <input type="text" id="dpUp" value="UP" placeholder="Maju (W/↑)">
+                        <input type="text" id="dpDown" value="DOWN" placeholder="Mundur (S/↓)">
+                    </div>
+                    <div class="row">
+                        <input type="text" id="dpLeft" value="LEFT" placeholder="Kiri (A/←)">
+                        <input type="text" id="dpRight" value="RIGHT" placeholder="Kanan (D/→)">
+                    </div>
+                    <div class="row">
+                        <input type="text" id="dpCenter" value="CIRCLE" placeholder="Tombol Tengah (Spasi)">
+                        <input type="text" id="dpStop" value="STOP" placeholder="String berhenti (Saat dilepas)" style="background: rgba(211, 60, 34, 0.15); border-color: var(--danger);">
+                    </div>
+                    <p style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.5;">
+                        *Saat jari/tombol dilepas, web akan otomatis mengirimkan string STOP.
+                    </p>
+                </div>
+
+                <div class="dpad-settings" id="tmSettings">
+                    <p class="title">KONFIGURASI TEACHABLE MACHINE</p>
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label style="font-size: 0.75rem;">DEFAULT MODEL URL (GOOGLE TEACHABLE MACHINE)</label>
+                        <input type="text" id="tmBuilderUrl" placeholder="https://teachablemachine.withgoogle.com/models/..." style="font-size: 0.8rem;">
+                    </div>
+                    <div class="row">
+                        <input type="text" id="tmBuilderStop" value="STOP" placeholder="String STOP otomatis" style="background: rgba(211, 60, 34, 0.15); border-color: var(--danger);">
+                    </div>
+                    <p style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.5;">
+                        *Link model dan mapping perintah tiap gerakan bisa langsung kamu atur juga di tab Teachable Machine saat kamera aktif.
+                    </p>
+                </div>
+
+                <button onclick="addWidget()" style="margin-top:20px;">+ CREATE WIDGET</button>
+            </div>
+        </div>
+    </main>
+
+    <aside class="sidebar-right">
+        <div class="monitor-header">
+            <h2>I/O MONITOR</h2>
+            <button onclick="clearLog()" style="padding: 4px 10px; font-size:0.7rem">CLEAR</button>
+        </div>
+        <div id="logContainer" class="log-container"></div>
+    </aside>
+
+    <div id="contactModal" class="modal">
+        <div class="modal-content">
+            <h2>Developer Info</h2>
+            <p style="color: var(--text-muted); font-size: 0.8rem; letter-spacing: 1px;">EMAIL</p>
+            <p style="margin-bottom: 16px;">mirza.athaya_09@idn.sch.id</p>
+            <p style="color: var(--text-muted); font-size: 0.8rem; letter-spacing: 1px;">PHONE</p>
+            <p style="margin-bottom: 28px;">08158071555</p>
+            <button onclick="hideContact()">CLOSE</button>
+        </div>
+    </div>
+
+    <script>
+        // --- JAM REALTIME HEADER ---
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('liveClock').innerText = now.toLocaleTimeString('en-US', { hour12: false });
+        }, 1000);
+
+        // --- LOADING SCREEN ---
+        window.addEventListener('load', () => {
+            const pctEl = document.getElementById('progressPct');
+            let pct = 0;
+            const pctInterval = setInterval(() => {
+                pct += Math.random() * 12 + 4;
+                if (pct >= 100) {
+                    pct = 100;
+                    clearInterval(pctInterval);
+                }
+                pctEl.innerText = Math.floor(pct) + '%';
+            }, 200);
+
+            setTimeout(() => {
+                document.getElementById('loader').classList.add('hidden');
+                addLog('SYS', 'System Initialization Complete');
+            }, 3200);
+        });
+
+        const UART_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+        const TX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+        const RX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+        let bleDevice = null; let rxChar = null; let dataBuffer = "";
+        let widgets = []; let chartInstances = {};
+
+        // State Controller
+        let ctrlMode = 'touch';
+        let activeDpadCmds = null;
+        let isMoving = false;
+
+        // State Teachable Machine
+        let tmModel = null;
+        let tmWebcam = null;
+        let isTmRunning = false;
+        let tmMaxPredictions = 0;
+        let lastSentClass = null;
+        let tmClassCommands = {};
+
+        updateTypeOptions();
+
+        // --- SISTEM LOGGING (DENGAN MILIDETIK) ---
+        function addLog(type, message) {
+            const container = document.getElementById('logContainer');
+            const now = new Date();
+            const ms = now.getMilliseconds().toString().padStart(3, '0');
+            const timeStr = `${now.toLocaleTimeString('en-US', { hour12: false })}.${ms}`;
+
+            const div = document.createElement('div');
+            div.className = `log-entry ${type.toLowerCase()}`;
+            let symbol = type === 'IN' ? '↓' : type === 'OUT' ? '↑' : type === 'ERR' ? '✕' : '•';
+            div.innerHTML = `<div class="time">${timeStr}</div><div><span class="type">${symbol} ${type}</span> : ${message}</div>`;
+            container.prepend(div);
+        }
+        function clearLog() { document.getElementById('logContainer').innerHTML = ""; }
+
+        // --- BLUETOOTH ---
+        document.getElementById('connectBtn').addEventListener('click', async () => {
+            if (bleDevice && bleDevice.gatt.connected) { bleDevice.gatt.disconnect(); return; }
+            try {
+                addLog('SYS', 'Requesting Bluetooth Device...');
+                bleDevice = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: "BBC micro:bit" }], optionalServices: [UART_UUID] });
+                bleDevice.addEventListener('gattserverdisconnected', () => {
+                    document.getElementById('statusIndicator').classList.remove('connected');
+                    document.getElementById('statusText').innerText = "DISCONNECTED";
+                    document.getElementById('connectBtn').innerText = "CONNECT DEVICE";
+                    addLog('ERR', 'Device disconnected'); bleDevice = null; rxChar = null;
+                });
+
+                const server = await bleDevice.gatt.connect();
+                const service = await server.getPrimaryService(UART_UUID);
+
+                const txChar = await service.getCharacteristic(TX_UUID);
+                await txChar.startNotifications();
+                txChar.addEventListener('characteristicvaluechanged', (e) => {
+                    dataBuffer += new TextDecoder().decode(e.target.value);
+                    let lines = dataBuffer.split('\n'); dataBuffer = lines.pop();
+                    lines.forEach(line => {
+                        line = line.replace('\r', '').trim();
+                        if(line) { addLog('IN', line); if(line.includes(',')) { let p = line.split(','); updateWidgetUI(p[0].trim(), parseFloat(p[1].trim())); } }
+                    });
+                });
+
+                rxChar = await service.getCharacteristic(RX_UUID);
+                document.getElementById('statusIndicator').classList.add('connected');
+                document.getElementById('statusText').innerText = "CONNECTED";
+                document.getElementById('connectBtn').innerText = "DISCONNECT";
+                addLog('SYS', 'Connected Successfully');
+            } catch (error) { addLog('ERR', `Connection Failed: ${error}`); }
+        });
+
+        async function sendData(key, value) {
+            if (!rxChar) { addLog('ERR', 'Disconnected'); return; }
+            try { let payload = `${key},${value}\n`; await rxChar.writeValue(new TextEncoder().encode(payload)); addLog('OUT', payload.trim()); }
+            catch (error) { addLog('ERR', 'Failed to send data'); }
+        }
+        async function sendRawData(command) {
+            if (!rxChar) return;
+            try { let payload = `${command}\n`; await rxChar.writeValue(new TextEncoder().encode(payload)); addLog('OUT', payload.trim()); }
+            catch (error) { addLog('ERR', `Failed to send '${command}'`); }
+        }
+
+        // --- GLOBAL EVENT LISTENER (TOUCH/MOUSE) ---
+        function handleTouchDown(event, cmdStr, btnId) {
+            if(ctrlMode !== 'touch') return;
+            event.preventDefault();
+            isMoving = true;
+            sendRawData(cmdStr);
+            document.getElementById(btnId).classList.add('pressed');
+        }
+        function releaseAllTouch() {
+            if (isMoving && activeDpadCmds) {
+                sendRawData(activeDpadCmds.stop);
+                isMoving = false;
+            }
+            document.querySelectorAll('.d-pad-btn').forEach(btn => btn.classList.remove('pressed'));
+        }
+
+        window.addEventListener('mouseup', releaseAllTouch);
+        window.addEventListener('touchend', releaseAllTouch);
+        window.addEventListener('touchcancel', releaseAllTouch);
+
+        // --- GLOBAL EVENT LISTENER (KEYBOARD WASD) ---
+        window.addEventListener('keydown', (e) => {
+            if(e.target.tagName === 'INPUT' || ctrlMode !== 'keyboard' || !activeDpadCmds) return;
+            if(e.repeat) return;
+            let key = e.key.toLowerCase();
+            let btnId = '';
+
+            if(key === 'w') { sendRawData(activeDpadCmds.up); btnId = 'btn-up'; }
+            else if(key === 's') { sendRawData(activeDpadCmds.down); btnId = 'btn-down'; }
+            else if(key === 'a') { sendRawData(activeDpadCmds.left); btnId = 'btn-left'; }
+            else if(key === 'd') { sendRawData(activeDpadCmds.right); btnId = 'btn-right'; }
+            else if(key === ' ') { sendRawData(activeDpadCmds.center); btnId = 'btn-center'; }
+            if(btnId) document.getElementById(btnId).classList.add('pressed');
+        });
+        window.addEventListener('keyup', (e) => {
+            if(e.target.tagName === 'INPUT' || ctrlMode !== 'keyboard' || !activeDpadCmds) return;
+            let key = e.key.toLowerCase();
+            let btnId = '';
+            if(['w', 'a', 's', 'd', ' '].includes(key)) {
+                sendRawData(activeDpadCmds.stop);
+
+                if(key === 'w') btnId = 'btn-up';
+                else if(key === 's') btnId = 'btn-down';
+                else if(key === 'a') btnId = 'btn-left';
+                else if(key === 'd') btnId = 'btn-right';
+                else if(key === ' ') btnId = 'btn-center';
+
+                if(btnId) document.getElementById(btnId).classList.remove('pressed');
+            }
+        });
+
+        // --- UI LOGIC ---
+        function switchTab(tabId) {
+            document.querySelectorAll('.view-container').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            const tabs = document.querySelectorAll('.tab');
+            if(tabId === 'dashboard') tabs[0].classList.add('active');
+            if(tabId === 'controller') tabs[1].classList.add('active');
+            if(tabId === 'teachable') tabs[2].classList.add('active');
+            if(tabId === 'builder') tabs[3].classList.add('active');
+            document.getElementById('pageTitle').innerText = tabId.toUpperCase().replace('_', ' ');
+        }
+
+        function setControllerMode(mode) {
+            ctrlMode = mode;
+            document.getElementById('mode-touch').classList.toggle('active', mode === 'touch');
+            document.getElementById('mode-kb').classList.toggle('active', mode === 'keyboard');
+            releaseAllTouch();
+            addLog('SYS', `Controller Mode changed to: ${mode.toUpperCase()}`);
+        }
+
+        function updateTypeOptions() {
+            const cat = document.getElementById('wCategory').value;
+            const typeSelect = document.getElementById('wType');
+            typeSelect.innerHTML = "";
+            if (cat === 'input') {
+                typeSelect.innerHTML += `<option value="digital">Text Value</option><option value="graph">Analog Graph</option>`;
+            } else {
+                typeSelect.innerHTML += `<option value="switch">Toggle Switch</option><option value="slider">Slider</option><option value="dpad">Custom Button (D-Pad)</option><option value="teachable">Teachable Machine AI</option>`;
+            }
+            toggleWidgetSettings();
+        }
+
+        function toggleWidgetSettings() {
+            const type = document.getElementById('wType').value;
+            document.getElementById('dpadSettings').style.display = (type === 'dpad') ? 'block' : 'none';
+            document.getElementById('tmSettings').style.display = (type === 'teachable') ? 'block' : 'none';
+            document.getElementById('keyGroup').style.display = (type === 'dpad' || type === 'teachable') ? 'none' : 'block';
+        }
+
+        function addWidget() {
+            const type = document.getElementById('wType').value;
+            const label = document.getElementById('wLabel').value.trim();
+            const category = document.getElementById('wCategory').value;
+            let key = document.getElementById('wKey').value.trim();
+            if (!label) return addLog('ERR', 'Missing Label');
+            if (type !== 'dpad' && type !== 'teachable' && !key) return addLog('ERR', 'Missing Key');
+
+            let widgetObj = { id: 'w_' + Date.now(), key, label, category, type };
+            if (type === 'dpad') {
+                widgetObj.cmds = {
+                    up: document.getElementById('dpUp').value.trim() || 'UP',
+                    down: document.getElementById('dpDown').value.trim() || 'DOWN',
+                    left: document.getElementById('dpLeft').value.trim() || 'LEFT',
+                    right: document.getElementById('dpRight').value.trim() || 'RIGHT',
+                    center: document.getElementById('dpCenter').value.trim() || 'CIRCLE',
+                    stop: document.getElementById('dpStop').value.trim() || 'STOP'
+                };
+            } else if (type === 'teachable') {
+                widgetObj.modelUrl = document.getElementById('tmBuilderUrl').value.trim() || '';
+                widgetObj.stopCmd = document.getElementById('tmBuilderStop').value.trim() || 'STOP';
+            }
+
+            widgets.push(widgetObj); 
+            document.getElementById('wLabel').value = "";
+            renderWidgets(); 
+            switchTab(type === 'dpad' ? 'controller' : type === 'teachable' ? 'teachable' : 'dashboard');
+        }
+
+        function deleteWidget(id) {
+            const target = widgets.find(w => w.id === id);
+            if (target && target.type === 'teachable') {
+                stopTmCamera();
+            }
+            widgets = widgets.filter(w => w.id !== id);
+            if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; }
+            renderWidgets();
+        }
+
+        function renderWidgets() {
+            const dashContainer = document.getElementById('widgetContainer');
+            const ctrlContainer = document.getElementById('controllerContainer');
+            const teachableContainer = document.getElementById('teachableContainer');
+            dashContainer.innerHTML = ""; 
+            let ctrlHTML = ""; 
+            let teachableHTML = "";
+            activeDpadCmds = null;
+            let hasTeachable = false;
+
+            widgets.forEach(w => {
+                if(w.type === 'dpad') {
+                    activeDpadCmds = w.cmds;
+                    let u = w.cmds.up, d = w.cmds.down, l = w.cmds.left, r = w.cmds.right, c = w.cmds.center;
+                    ctrlHTML += `
+                        <div class="d-pad-wrapper">
+                            <h3 style="margin-bottom: 20px; letter-spacing:2px; align-self: flex-start;">${w.label}</h3>
+
+                            <div class="mode-switcher">
+                                <button id="mode-touch" class="mode-btn ${ctrlMode==='touch'?'active':''}" onclick="setControllerMode('touch')">TOUCH / MOUSE</button>
+                                <button id="mode-kb" class="mode-btn ${ctrlMode==='keyboard'?'active':''}" onclick="setControllerMode('keyboard')">KEYBOARD (WASD)</button>
+                            </div>
+                            <button class="btn-delete" onclick="deleteWidget('${w.id}')">✕</button>
+
+                            <div class="d-pad-container">
+                                <div id="btn-up" class="d-pad-btn up"
+                                    onmousedown="handleTouchDown(event, '${u}', 'btn-up')"
+                                    ontouchstart="handleTouchDown(event, '${u}', 'btn-up')">↑</div>
+
+                                <div id="btn-left" class="d-pad-btn left"
+                                    onmousedown="handleTouchDown(event, '${l}', 'btn-left')"
+                                    ontouchstart="handleTouchDown(event, '${l}', 'btn-left')">←</div>
+
+                                <div id="btn-center" class="d-pad-btn center"
+                                    onmousedown="handleTouchDown(event, '${c}', 'btn-center')"
+                                    ontouchstart="handleTouchDown(event, '${c}', 'btn-center')">◎</div>
+
+                                <div id="btn-right" class="d-pad-btn right"
+                                    onmousedown="handleTouchDown(event, '${r}', 'btn-right')"
+                                    ontouchstart="handleTouchDown(event, '${r}', 'btn-right')">→</div>
+
+                                <div id="btn-down" class="d-pad-btn down"
+                                    onmousedown="handleTouchDown(event, '${d}', 'btn-down')"
+                                    ontouchstart="handleTouchDown(event, '${d}', 'btn-down')">↓</div>
+                            </div>
+                            <p style="margin-top:20px; color:var(--text-muted); font-size:0.8rem; text-align: center; line-height:1.6;">
+                                <b>TOUCH:</b> Tekan layar untuk jalan, lepaskan untuk berhenti.<br>
+                                <b>WASD:</b> Tekan W,A,S,D di keyboard untuk jalan (Spasi = Circle).
+                            </p>
+                        </div>
+                    `;
+                } else if(w.type === 'teachable') {
+                    hasTeachable = true;
+                    teachableHTML += renderTeachableCard(w);
+                } else {
+                    let html = `<h3>${w.label}</h3><button class="btn-delete" onclick="deleteWidget('${w.id}')">✕</button>`;
+                    if (w.category === 'input') {
+                        if (w.type === 'graph') html += `<canvas id="canvas_${w.id}" width="100" height="40"></canvas>`;
+                        else html += `<div class="value" id="val_${w.id}">0</div>`;
+                    } else if (w.category === 'output') {
+                        if (w.type === 'slider') html += `<div class="value" id="val_${w.id}">0</div><input type="range" min="0" max="1023" value="0" oninput="document.getElementById('val_${w.id}').innerText=this.value" onchange="sendData('${w.key}', this.value)">`;
+                        else if (w.type === 'switch') html += `<label class="switch"><input type="checkbox" onchange="sendData('${w.key}', this.checked ? 1 : 0)"><span class="slider"></span></label>`;
+                    }
+                    let div = document.createElement('div'); div.className = 'widget-card'; div.innerHTML = html; dashContainer.appendChild(div);
+                    if (w.category === 'input' && w.type === 'graph') {
+                        const ctx = document.getElementById(`canvas_${w.id}`).getContext('2d');
+                        chartInstances[w.id] = new Chart(ctx, { type: 'line', data: { labels: Array(15).fill(''), datasets: [{ data: Array(15).fill(0), borderColor: '#22d385', backgroundColor: 'rgba(34, 211, 133, 0.1)', borderWidth: 1.5, fill: true, pointRadius: 0, tension: 0.3 }] }, options: { responsive: true, animation: false, scales: { x: { display: false }, y: { display: false, min: 0 } }, plugins: { legend: { display: false }, tooltip: { enabled: false } } } });
+                    }
+                }
+            });
+            ctrlContainer.innerHTML = activeDpadCmds ? ctrlHTML : '<div class="empty-state">Tambahkan widget "Custom Button (D-Pad)" di Builder untuk menggunakan kontroler ini.</div>';
+            teachableContainer.innerHTML = hasTeachable ? teachableHTML : '<div class="empty-state">Tambahkan widget "Teachable Machine AI" di Builder untuk menggunakan kontroler ini.</div>';
+
+            if (hasTeachable && tmWebcam && tmWebcam.canvas) {
+                const camBox = document.getElementById('tmWebcamContainer');
+                if (camBox && !camBox.contains(tmWebcam.canvas)) {
+                    camBox.innerHTML = "";
+                    camBox.appendChild(tmWebcam.canvas);
+                }
+            }
+        }
+
+        function updateWidgetUI(key, value) {
+            widgets.forEach(w => {
+                if (w.key === key && w.category === 'input') {
+                    if (w.type === 'graph' && chartInstances[w.id]) {
+                        let chart = chartInstances[w.id]; let d = chart.data.datasets[0].data; d.push(value);
+                        if (d.length > 15) d.shift(); chart.update();
+                    } else if (w.type === 'digital') {
+                        let display = document.getElementById(`val_${w.id}`); if (display) display.innerText = value;
+                    }
+                }
+            });
+        }
+
+        // --- TEACHABLE MACHINE LOGIC ---
+        function getSmartDefaultCmd(label) {
+            const l = label.toLowerCase();
+            if (l.includes('maju') || l.includes('up') || l.includes('forward')) return 'UP';
+            if (l.includes('mundur') || l.includes('down') || l.includes('back')) return 'DOWN';
+            if (l.includes('kiri') || l.includes('left')) return 'LEFT';
+            if (l.includes('kanan') || l.includes('right')) return 'RIGHT';
+            if (l.includes('stop') || l.includes('diam') || l.includes('berhenti') || l.includes('neutral')) return 'STOP';
+            if (l.includes('putar') || l.includes('spin') || l.includes('circle')) return 'CIRCLE';
+            return label.toUpperCase().replace(/\s+/g, '_');
+        }
+
+        function renderTeachableCard(w) {
+            return `
+                <div class="tm-wrapper">
+                    <div class="tm-header">
+                        <div class="tm-title">${w.label}</div>
+                        <button class="btn-delete" onclick="deleteWidget('${w.id}')" style="position:static;">✕</button>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:6px;">TEACHABLE MACHINE MODEL URL</label>
+                        <div class="tm-url-input-group">
+                            <input type="text" id="tmUrlInput" value="${w.modelUrl || ''}" placeholder="https://teachablemachine.withgoogle.com/models/XXXXX/">
+                            <button class="tm-btn-primary" id="tmStartBtn" onclick="startTeachableMachine('${w.id}')">START AI</button>
+                            <button class="tm-btn-danger" id="tmStopBtn" onclick="stopTmCamera()" style="display:none;">STOP</button>
+                        </div>
+                    </div>
+
+                    <div class="tm-main-grid">
+                        <div class="tm-cam-box">
+                            <div class="tm-webcam-container" id="tmWebcamContainer">
+                                <span style="font-size:0.75rem; color:var(--text-muted);">KAMERA BELUM AKTIF</span>
+                            </div>
+                            <div id="tmActiveLabel" class="tm-status-pill">AI IDLE</div>
+                            
+                            <div style="width:100%; margin-top:16px; font-size:0.75rem; color:var(--text-muted);">
+                                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                                    <span>CONFIDENCE THRESHOLD</span>
+                                    <span id="tmThreshVal">75%</span>
+                                </div>
+                                <input type="range" id="tmThreshold" min="0.5" max="0.95" step="0.05" value="0.75" oninput="document.getElementById('tmThreshVal').innerText = Math.round(this.value*100) + '%'">
+                            </div>
+
+                            <div style="width:100%; margin-top:12px; font-size:0.75rem; display:flex; align-items:center; gap:8px;">
+                                <input type="checkbox" id="tmStopOnLow" checked style="accent-color:var(--accent);">
+                                <label for="tmStopOnLow" style="color:var(--text-muted); cursor:pointer;">Auto STOP saat deteksi rendah</label>
+                            </div>
+
+                            <div style="width:100%; margin-top:10px; font-size:0.75rem; display:flex; align-items:center; gap:8px;">
+                                <label style="color:var(--text-muted);">STOP CMD:</label>
+                                <input type="text" id="tmStopCmd" value="${w.stopCmd || 'STOP'}" style="flex:1; padding:4px 8px; background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); font-family:inherit; border-radius:4px; font-size:0.75rem;">
+                            </div>
+                        </div>
+
+                        <div class="tm-controls">
+                            <div style="font-size:0.75rem; letter-spacing:1px; color:var(--text-muted); display:flex; justify-content:space-between;">
+                                <span>CLASS PREDICTIONS</span>
+                                <span>SEND COMMAND</span>
+                            </div>
+                            <div id="tmClassesContainer" class="tm-classes-list">
+                                <div style="color:var(--text-muted); font-size:0.75rem; text-align:center; padding:30px 0; border:1px dashed var(--border); border-radius:6px;">
+                                    Paste link model Teachable Machine di atas, lalu klik <b>START AI</b> untuk membaca class dan mengontrol Tinybit.
+                                </div>
+                            </div>
+                            <p style="font-size:0.72rem; color:var(--text-muted); line-height:1.5;">
+                                *Sistem otomatis mengirim string perintah saat deteksi class berubah. Kamu bisa ubah string tiap class sesuai kode MakeCode/Python di micro:bit.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function startTeachableMachine(widgetId) {
+            const urlInput = document.getElementById('tmUrlInput');
+            let rawUrl = urlInput ? urlInput.value.trim() : '';
+            if (!rawUrl) {
+                addLog('ERR', 'Masukkan URL model Teachable Machine');
+                alert('Silakan masukkan link model Google Teachable Machine terlebih dahulu!');
+                return;
+            }
+            if (!rawUrl.endsWith('/')) rawUrl += '/';
+
+            const startBtn = document.getElementById('tmStartBtn');
+            const stopBtn = document.getElementById('tmStopBtn');
+            if (startBtn) { startBtn.disabled = true; startBtn.innerText = 'LOADING...'; }
+
+            try {
+                addLog('SYS', 'Loading Teachable Machine model...');
+                const modelURL = rawUrl + 'model.json';
+                const metadataURL = rawUrl + 'metadata.json';
+                tmModel = await tmImage.load(modelURL, metadataURL);
+                tmMaxPredictions = tmModel.getTotalClasses();
+                const labels = tmModel.getClassLabels();
+                addLog('SYS', `Model siap: ${tmMaxPredictions} class terdeteksi.`);
+
+                const classesListEl = document.getElementById('tmClassesContainer');
+                let classesHTML = '';
+                labels.forEach((label, idx) => {
+                    if (!tmClassCommands[label]) {
+                        tmClassCommands[label] = getSmartDefaultCmd(label);
+                    }
+                    classesHTML += `
+                        <div class="tm-class-item" id="tm-item-${idx}">
+                            <div class="tm-class-info">
+                                <div class="tm-class-name">
+                                    <span>${label}</span>
+                                    <span id="tm-pct-${idx}">0%</span>
+                                </div>
+                                <div class="tm-class-bar">
+                                    <div class="tm-class-bar-fill" id="tm-bar-${idx}"></div>
+                                </div>
+                            </div>
+                            <input type="text" class="tm-cmd-input" value="${tmClassCommands[label]}" 
+                                onchange="tmClassCommands['${label}'] = this.value.trim()" 
+                                placeholder="Command">
+                        </div>
+                    `;
+                });
+                classesListEl.innerHTML = classesHTML;
+
+                addLog('SYS', 'Mengaktifkan webcam...');
+                const flip = true;
+                tmWebcam = new tmImage.Webcam(290, 220, flip);
+                await tmWebcam.setup();
+                await tmWebcam.play();
+
+                const camBox = document.getElementById('tmWebcamContainer');
+                camBox.innerHTML = '';
+                camBox.appendChild(tmWebcam.canvas);
+
+                isTmRunning = true;
+                lastSentClass = null;
+                if (startBtn) { startBtn.style.display = 'none'; startBtn.disabled = false; startBtn.innerText = 'START AI'; }
+                if (stopBtn) { stopBtn.style.display = 'inline-block'; }
+
+                addLog('SYS', 'Teachable Machine aktif & mendeteksi.');
+                window.requestAnimationFrame(tmLoop);
+
+            } catch (err) {
+                addLog('ERR', `Gagal inisialisasi AI: ${err.message || err}`);
+                alert('Gagal memuat Teachable Machine atau webcam.\nPastikan URL valid dan izin kamera diizinkan!');
+                if (startBtn) { startBtn.disabled = false; startBtn.innerText = 'START AI'; }
+                stopTmCamera();
+            }
+        }
+
+        async function stopTmCamera() {
+            isTmRunning = false;
+            if (tmWebcam) {
+                try { await tmWebcam.stop(); } catch(e){}
+                tmWebcam = null;
+            }
+            const camBox = document.getElementById('tmWebcamContainer');
+            if (camBox) {
+                camBox.innerHTML = '<span style="font-size:0.75rem; color:var(--text-muted);">KAMERA NONAKTIF</span>';
+            }
+            const activeLabelEl = document.getElementById('tmActiveLabel');
+            if (activeLabelEl) {
+                activeLabelEl.innerText = 'AI IDLE';
+                activeLabelEl.classList.remove('active');
+            }
+            const startBtn = document.getElementById('tmStartBtn');
+            const stopBtn = document.getElementById('tmStopBtn');
+            if (startBtn) { startBtn.style.display = 'inline-block'; startBtn.disabled = false; startBtn.innerText = 'START AI'; }
+            if (stopBtn) { stopBtn.style.display = 'none'; }
+
+            const stopCmd = document.getElementById('tmStopCmd')?.value.trim() || 'STOP';
+            if (lastSentClass && lastSentClass !== '__STOP__') {
+                sendRawData(stopCmd);
+            }
+            lastSentClass = null;
+            addLog('SYS', 'Teachable Machine dihentikan.');
+        }
+
+        async function tmLoop() {
+            if (!isTmRunning) return;
+            if (tmWebcam) {
+                tmWebcam.update();
+                await tmPredict();
+            }
+            if (isTmRunning) {
+                window.requestAnimationFrame(tmLoop);
+            }
+        }
+
+        async function tmPredict() {
+            if (!tmModel || !tmWebcam || !isTmRunning) return;
+            const predictions = await tmModel.predict(tmWebcam.canvas);
+            
+            let highestProb = 0;
+            let dominantIndex = -1;
+            let dominantClass = null;
+
+            for (let i = 0; i < tmMaxPredictions; i++) {
+                const className = predictions[i].className;
+                const prob = predictions[i].probability;
+                const pct = Math.round(prob * 100);
+
+                const barFill = document.getElementById(`tm-bar-${i}`);
+                const pctLabel = document.getElementById(`tm-pct-${i}`);
+                const classItem = document.getElementById(`tm-item-${i}`);
+
+                if (barFill) barFill.style.width = `${pct}%`;
+                if (pctLabel) pctLabel.innerText = `${pct}%`;
+                if (classItem) classItem.classList.remove('active-class');
+
+                if (prob > highestProb) {
+                    highestProb = prob;
+                    dominantIndex = i;
+                    dominantClass = className;
+                }
+            }
+
+            const thresholdInput = document.getElementById('tmThreshold');
+            const threshold = thresholdInput ? parseFloat(thresholdInput.value) : 0.75;
+            const activeLabelEl = document.getElementById('tmActiveLabel');
+            const stopOnLow = document.getElementById('tmStopOnLow')?.checked;
+            const stopCmd = document.getElementById('tmStopCmd')?.value.trim() || 'STOP';
+
+            if (highestProb >= threshold && dominantIndex !== -1) {
+                const classItem = document.getElementById(`tm-item-${dominantIndex}`);
+                if (classItem) classItem.classList.add('active-class');
+
+                if (activeLabelEl) {
+                    activeLabelEl.innerText = `${dominantClass.toUpperCase()} (${Math.round(highestProb * 100)}%)`;
+                    activeLabelEl.classList.add('active');
+                }
+
+                if (dominantClass !== lastSentClass) {
+                    lastSentClass = dominantClass;
+                    const cmd = tmClassCommands[dominantClass] || dominantClass.toUpperCase();
+                    if (cmd) {
+                        sendRawData(cmd);
+                    }
+                }
+            } else {
+                if (activeLabelEl) {
+                    activeLabelEl.innerText = "MENUNGGU DETEKSI...";
+                    activeLabelEl.classList.remove('active');
+                }
+
+                if (stopOnLow && lastSentClass !== null && lastSentClass !== '__STOP__') {
+                    lastSentClass = '__STOP__';
+                    sendRawData(stopCmd);
+                }
+            }
+        }
+
+        function showContact() {
+            const modal = document.getElementById('contactModal');
+            modal.style.display = 'flex';
+            modal.classList.add('show');
+        }
+        function hideContact() {
+            const modal = document.getElementById('contactModal');
+            modal.classList.remove('show');
+            modal.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
