@@ -1,11 +1,11 @@
 {
     "version": 2,
-    "name": "robot_control",
+    "name": "Robot-Control",
     "cleanUrls": true,
     "rewrites": [
         {
             "source": "/(.*)",
-            "destination": "YOU CONTROL V2.html"
+            "destination": "/index.html"
         }
     ]
 }
