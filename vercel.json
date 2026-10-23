@@ -1,6 +1,6 @@
 {
     "version": 2,
-    "name": "you-control",
+    "name": "vercel.json",
     "cleanUrls": true,
     "rewrites": [
         {
