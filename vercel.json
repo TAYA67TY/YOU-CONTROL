@@ -1,6 +1,6 @@
 {
     "version": 2,
-    "name": "vercel.json",
+    "name": "robot_control",
     "cleanUrls": true,
     "rewrites": [
         {
