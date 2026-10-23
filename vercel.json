@@ -5,7 +5,7 @@
     "rewrites": [
         {
             "source": "/(.*)",
-            "destination": "/YOU CONTROL V2.html"
+            "destination": "YOU CONTROL V2.html"
         }
     ]
 }
